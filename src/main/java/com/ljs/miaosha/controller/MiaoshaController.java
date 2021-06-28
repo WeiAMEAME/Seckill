@@ -1,5 +1,6 @@
 package com.ljs.miaosha.controller;
 
+import com.ljs.miaosha.dao.GoodsDao;
 import com.ljs.miaosha.domain.MiaoshaOrder;
 import com.ljs.miaosha.domain.MiaoshaUser;
 import com.ljs.miaosha.domain.OrderInfo;
@@ -47,6 +48,9 @@ public class MiaoshaController implements InitializingBean{
 	OrderService orderService;
 	@Autowired
 	MQSender mQSender;
+
+	@Autowired
+	GoodsDao goodsDao;
 	
 	//标记
 	Map <Long,Boolean>localMap=new HashMap<Long,Boolean>();
@@ -187,8 +191,9 @@ public class MiaoshaController implements InitializingBean{
 		if(stock<0) {
 			return Result.error(CodeMsg.MIAOSHA_OVER_ERROR);
 		}
-		//4.判断这个秒杀订单形成没有，判断是否已经秒杀到了，避免一个账户秒杀多个商品
+		//4.判断这个秒杀订单形成没有，判断是否已经秒杀到了，避免一个账户秒杀多个商品,这里只是做了一个判断,并不能保证这个判断之后就不会重复下单
 		MiaoshaOrder order = orderService.getMiaoshaOrderByUserIdAndCoodsId(user.getId(), goodsId);
+		//如果这个时候另外一个线程完成了下单操作,那么还是会生成这样的消息发送到MQ,因此到MQ中还是需要进行判断
 		if (order != null) {// 重复下单
 			// model.addAttribute("errorMessage", CodeMsg.REPEATE_MIAOSHA);
 			return Result.error(CodeMsg.REPEATE_MIAOSHA);
@@ -215,13 +220,15 @@ public class MiaoshaController implements InitializingBean{
 		if(user==null){
 			return "login";
 		}
+		System.out.println(user);
 		GoodsVo goodsvo=goodsService.getGoodsVoByGoodsId(goodsId);
 		//判断商品库存，库存大于0，才进行操作，多线程下会出错
-		int  stockcount=goodsvo.getStockCount();		
+		int  stockcount=goodsvo.getStockCount();
 		if(stockcount<=0) {//失败			库存至临界值1的时候，此时刚好来了加入10个线程，那么库存就会-10
 			model.addAttribute("errorMessage", CodeMsg.MIAOSHA_OVER_ERROR);
 			return "miaosha_fail";
 		}
+		//goodsDao.reduceStock2(goodsId);
 		//判断这个秒杀订单形成没有，判断是否已经秒杀到了，避免一个账户秒杀多个商品 
 		MiaoshaOrder order=orderService.getMiaoshaOrderByUserIdAndCoodsId(user.getId(),goodsId);
 		if(order!=null) {//重复下单
@@ -260,11 +267,12 @@ public class MiaoshaController implements InitializingBean{
 		}
 		GoodsVo goodsvo=goodsService.getGoodsVoByGoodsId(goodsId);
 		//判断商品库存，库存大于0，才进行操作，多线程下会出错
-		int  stockcount=goodsvo.getStockCount();		
+		int  stockcount=goodsvo.getStockCount();
 		if(stockcount<=0) {//失败			库存至临界值1的时候，此时刚好来了加入10个线程，那么库存就会-10
 			//model.addAttribute("errorMessage", CodeMsg.MIAOSHA_OVER_ERROR);
 			return Result.error(CodeMsg.MIAOSHA_OVER_ERROR);
 		}
+
 		//判断这个秒杀订单形成没有，判断是否已经秒杀到了，避免一个账户秒杀多个商品 
 		MiaoshaOrder order=orderService.getMiaoshaOrderByUserIdAndCoodsId(user.getId(),goodsId);
 		if(order!=null) {//重复下单
